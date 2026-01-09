@@ -1,2 +1,2 @@
-# MARL-UAVCDP
-This repository is about the project of the Cooperative Decision-Making and Path Planning for UAV Swarm based on the Multi-Agent Reinforcement learning.  
+# MARL-HeteroUAVSwarm
+Code for the project: The dynamic collaborative awareness and path planning of Heterogeneous UAV swarm under telecommunication limitations based on MARL.  
