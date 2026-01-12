@@ -58,3 +58,9 @@ DRONE_CONFIGS = {
         'role_id':2,
     }
 }
+
+OBS_CONFIG = {
+    "dim_self":8,
+    "dim_obs_item":2,
+    "dim_neigh_item":3,
+}

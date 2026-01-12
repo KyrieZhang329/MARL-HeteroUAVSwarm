@@ -1,6 +1,6 @@
 import numpy as np
 from marl_uav.env.core import World,Agent,Landmark
-from marl_uav.env.config import DRONE_CONFIGS,MAP_SIZE,NUM_OBSTACLES,OBSTACLE_RADIUS,MIN_GOAL_DIST,GOAL_RADIUS,POS_NOISE,VEL_NOISE
+from marl_uav.env.config import DRONE_CONFIGS,MAP_SIZE,NUM_OBSTACLES,OBSTACLE_RADIUS,MIN_GOAL_DIST,GOAL_RADIUS,POS_NOISE,VEL_NOISE,OBS_CONFIG,NUM_OBSTACLES
 from marl_uav.env.cover_scan import GridMapScan
 
 
@@ -180,8 +180,15 @@ class Scenario:
                 other_obs.extend([rel_pos[0],rel_pos[1],1.0])
             else:
                 other_obs.extend([0.0,0.0,0.0])
-        return np.concatenate([
+        final_obs = np.concatenate([
             np.array(self.state),
             entity_obs,
             np.array(other_obs),
         ])
+        expected_dim =(
+            OBS_CONFIG['dim_self']+
+            NUM_OBSTACLES*OBS_CONFIG['dim_obd_item']+
+            (len(world.agents)-1)*OBS_CONFIG['dim_neigh_item']
+        )
+        assert len(final_obs)==expected_dim
+        return final_obs

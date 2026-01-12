@@ -173,13 +173,16 @@ class World:  # multi-agent world
         for agent in self.scripted_agents:
             agent.action = agent.action_callback(agent, self)
         # gather forces applied to entities
-        p_force = [None] * len(self.entities)
-        # apply agent physical controls
-        p_force = self.apply_action_force(p_force)
-        # apply environment forces
-        p_force = self.apply_environment_force(p_force)
-        # integrate physical state
-        self.integrate_state(p_force)
+        sim_steps = 10
+        sub_dt = self.dt/sim_steps
+        for step in range(sim_steps):
+            p_force = [None] * len(self.entities)
+            # apply agent physical controls
+            p_force = self.apply_action_force(p_force)
+            # apply environment forces
+            p_force = self.apply_environment_force(p_force)
+            # integrate physical state
+            self.integrate_state(p_force,dt=sub_dt)
         # update agent state
         for agent in self.agents:
             self.update_agent_state(agent)
@@ -198,6 +201,7 @@ class World:  # multi-agent world
                 )
                 control_input = np.clip(agent.action.u+noise,-1.0,1.0)
                 force_action = control_input*agent.max_accel*agent.mass
+                force_action = self.cbf_safety_filter(agent,force_action)
                 force_friction = -np.sign(agent.state.p_vel)*(agent.state.p_vel**2)*agent.fric_coeff
                 total_force = force_friction+force_action
                 if p_force[i] is None:
@@ -225,12 +229,12 @@ class World:  # multi-agent world
         return p_force
 
     # integrate physical state
-    def integrate_state(self, p_force):
+    def integrate_state(self, p_force,dt):
         for i, entity in enumerate(self.entities):
             if not entity.movable:
                 continue
             if p_force[i] is not None:
-                entity.state.p_vel += (p_force[i] / entity.mass) * self.dt
+                entity.state.p_vel += (p_force[i] / entity.mass) * dt
             if entity.max_speed is not None:
                 speed = np.sqrt(
                     np.square(entity.state.p_vel[0]) + np.square(entity.state.p_vel[1])
@@ -241,7 +245,7 @@ class World:  # multi-agent world
                             / speed
                             * entity.max_speed
                     )
-            entity.state.p_pos += entity.state.p_vel * self.dt
+            entity.state.p_pos += entity.state.p_vel * dt
 
     def update_agent_state(self, agent):
         # set communication state (directly for now)
@@ -273,3 +277,36 @@ class World:  # multi-agent world
         force_a = +force if entity_a.movable else None
         force_b = -force if entity_b.movable else None
         return [force_a, force_b]
+
+    def cbf_safety_filter(self,agent,raw_action_force):
+        safe_force = raw_action_force.copy()
+        for obs in self.landmarks:
+            p = agent.state.p_pos
+            v = agent.state.p_vel
+            p_obs = obs.state.p_pos
+
+            rel_p = p-p_obs
+            distance = np.linalg.norm(rel_p)
+            distance_sq = distance**2
+            r_safe_sq = (obs.size+agent.size+0.5)**2
+            h = distance_sq-r_safe_sq
+            if h >5.0:
+                continue
+            h_dot = 2*np.dot(rel_p,v)
+            k1,k2 = 2.0,2.0
+            term_free = 2*np.dot(v,v)
+            term_ctrl_coeff = 2*rel_p/agent.mass
+
+            A = term_ctrl_coeff
+            b = -term_free - k1*h_dot-k2*h
+            violation = np.dot(A,safe_force)-b
+            if violation<0.0:
+                norm_A_sq = np.dot(A,A)+1e-6
+                lambda_dual = -violation/norm_A_sq
+                correction = lambda_dual*A
+                max_correction = 50.0
+                correction_norm = np.linalg.norm(correction)
+                if correction_norm>max_correction:
+                    correction = correction/correction_norm*max_correction
+                safe_force += correction
+        return safe_force
