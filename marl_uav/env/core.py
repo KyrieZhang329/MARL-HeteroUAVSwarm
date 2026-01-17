@@ -21,6 +21,7 @@ class AgentState(
     def __init__(self):
         super().__init__()
         # communication utterance
+        self.cbf_residual = 0.0
         self.c = None
 
 
@@ -278,6 +279,9 @@ class World:  # multi-agent world
 
     def cbf_safety_filter(self,agent,raw_action_force):
         safe_force = raw_action_force.copy()
+        projection_residual = 0.0
+        p = agent.state.p_pos
+        v = agent.state.p_vel
         for obs in self.landmarks:
             p = agent.state.p_pos
             v = agent.state.p_vel
@@ -307,4 +311,6 @@ class World:  # multi-agent world
                 if correction_norm>max_correction:
                     correction = correction/correction_norm*max_correction
                 safe_force += correction
+                projection_residual += np.linalg.norm(correction)
+        agent.state.cbf_residual = projection_residual
         return safe_force

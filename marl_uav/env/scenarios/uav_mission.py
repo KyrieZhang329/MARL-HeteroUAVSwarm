@@ -47,6 +47,8 @@ class Scenario:
             if np.linalg.norm(start_center-world.goal_pos)>MIN_GOAL_DIST:
                 break
         for i,agent in enumerate(world.agents):
+            agent.lambda_collision = 5.0
+            agent.lambda_lr = 0.05
             while True:
                 noise = np.random.uniform(-3, 3, world.dim_p)
                 proposed_pos = start_center+noise
@@ -129,9 +131,13 @@ class Scenario:
                     penalty_field = np.clip(penalty_field,0.0,20.0)
                     reward -= penalty_field*0.1
                 if distance_2d < min_distance_2d and distance_z < min_distance_z:
-                    reward -= 10.0
+                    violation = (min_distance_2d-distance_2d)+(min_distance_z-distance_z)
+                    reward -= agent.lambda_collision*violation*5.0
+                    agent.lambda_collision += agent.lambda_lr*violation
                     if not hasattr(world,'collisions'):world.collisions=0
                     world.collisions += 1
+                else:
+                    agent.lambda_collision = max(1.0,agent.lambda_collision-agent.lambda_lr*0.05)
             for obs in world.landmarks:
                 distance = np.linalg.norm(obs.state.p_pos-agent.state.p_pos)
                 collision_distance = obs.size+agent.size
@@ -144,7 +150,9 @@ class Scenario:
                     repulsion = np.clip(repulsion,0.0,20.0)
                     reward -= repulsion*0.2
                 if distance < collision_distance:
-                    reward -= 10.0
+                    violation = collision_distance-distance
+                    reward -= agent.lambda_collision*violation*5.0
+                    agent.lambda_collision += agent.lambda_lr*violation
                     if not hasattr(world,'collisions'):world.collisions=0
                     world.collisions += 1
 
@@ -155,7 +163,12 @@ class Scenario:
             jerk_cost = jerk if agent.last_action_u is not None else 0.0
         agent.last_action_u = agent.action.u
         energy_cost = np.sum(np.square(agent.action.u))
-        return reward,{"energy":energy_cost,"jerk":jerk_cost}
+        return reward,{
+            "energy":energy_cost,
+            "jerk":jerk_cost,
+            "lambda_collision":agent.lambda_collision,
+            "cbf_res":getattr(agent,'cbf_residual',0.0)
+        }
 
     def get_comm(self, world):
         adj = np.zeros((len(world.agents), len(world.agents)))
